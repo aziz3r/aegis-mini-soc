@@ -1,0 +1,145 @@
+# =============================================================================
+#  .github/workflows/ci.yml — Intégration continue d'AEGIS Mini-SOC
+# -----------------------------------------------------------------------------
+#  Chaque envoi rejoue exactement les contrôles que l'on peut relancer sur son
+#  poste : rien ici n'a besoin d'un accès réseau privilégié, puisque le trafic
+#  de test est engendré et qu'aucun test ne capture d'interface réelle.
+#
+#  Les travaux :
+#    tests-rapides   assemblage de flux et API — quelques secondes
+#    tests-complets  les 94 tests, dont ceux qui entraînent un petit modèle
+#    types           TypeScript en mode strict
+#    build-web       l'interface compile réellement
+#    schemas         les SVG correspondent à leur description, sans débordement
+#    securite        secrets commis par erreur (gitleaks), CVE des dépendances
+# =============================================================================
+
+name: Intégration continue
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Moindre privilège : le jeton n'a besoin que de lire.
+permissions:
+  contents: read
+
+# Un nouvel envoi annule l'exécution précédente sur la même branche.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  #  1. Les tests qui n'entraînent aucun modèle : retour en quelques secondes
+  # ---------------------------------------------------------------------------
+  tests-rapides:
+    name: Tests rapides (cœur + API)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Installer les dépendances
+        run: pip install -e "backend[dev]"
+      - name: Assemblage de flux, features, fenêtres glissantes
+        run: cd backend && python -m pytest tests/test_core.py -q
+      - name: API, rôles, triage, chemin d'écriture en base
+        run: cd backend && python -m pytest tests/test_api.py -q
+
+  # ---------------------------------------------------------------------------
+  #  2. La suite complète, modèles compris
+  # ---------------------------------------------------------------------------
+  tests-complets:
+    name: Suite complète (94 tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Installer les dépendances
+        run: pip install -e "backend[dev]"
+      - name: Tous les tests
+        run: cd backend && python -m pytest -q
+
+  # ---------------------------------------------------------------------------
+  #  3. L'interface : types stricts, puis compilation réelle
+  # ---------------------------------------------------------------------------
+  interface:
+    name: Interface (types + compilation)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Installer les dépendances
+        run: cd frontend && npm ci
+      - name: Vérification de types (strict)
+        run: cd frontend && npx tsc --noEmit
+      - name: Compilation
+        run: cd frontend && npm run build
+
+  # ---------------------------------------------------------------------------
+  #  4. Les schémas correspondent-ils encore à leur description ?
+  #
+  #  Un schéma vieillit en silence : il reste joli pendant que le projet avance.
+  #  Ce contrôle les régénère et refuse qu'un texte déborde de sa toile.
+  # ---------------------------------------------------------------------------
+  schemas:
+    name: Schémas (régénération + débordements)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Régénérer et vérifier
+        run: cd docs/schemas && python tout.py
+      - name: Les SVG versionnés sont-ils à jour ?
+        run: |
+          if ! git diff --quiet -- docs/*.svg; then
+            echo "::error::Les SVG versionnés ne correspondent plus à leurs générateurs."
+            echo "Relancez : python3 docs/schemas/tout.py"
+            git diff --stat -- docs/*.svg
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  #  5. Sécurité : secrets commis par erreur, CVE des dépendances
+  # ---------------------------------------------------------------------------
+  securite:
+    name: Sécurité (secrets + dépendances)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # gitleaks doit voir tout l'historique
+
+      - name: Secrets commis par erreur (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: CVE connues des dépendances (pip-audit)
+        run: |
+          pip install pip-audit
+          pip install -e backend
+          # --skip-editable : on audite les dépendances, pas le paquet local lui-même
+          pip-audit --desc --skip-editable
