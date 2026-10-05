@@ -1,0 +1,214 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine 
+} from 'recharts';
+import { Shield, ShieldAlert, Activity, Server, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
+
+const THRESHOLD = 0.8;
+const MAX_DATA_POINTS = 30;
+
+const MOCK_IPS = [
+  "192.168.1.105", "10.0.0.42", "172.16.254.1", 
+  "45.33.32.156", "8.8.8.8", "192.168.1.200"
+];
+
+export default function AegisDashboard() {
+  const [isConnected, setIsConnected] = useState(true);
+  const [chartData, setChartData] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [stats, setStats] = useState({
+    totalProcessed: 0,
+    totalAlerts: 0,
+    topAttacker: "N/A"
+  });
+
+  const generateMockData = useCallback(() => {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('fr-FR', { second: '2-digit', minute: '2-digit', hour: '2-digit' });
+    
+    // Simulate normal traffic with occasional spikes
+    const isSpike = Math.random() > 0.85; 
+    const baseScore = Math.random() * 0.4;
+    const anomalyScore = isSpike ? 0.6 + Math.random() * 0.38 : baseScore;
+    
+    const newDataPoint = {
+      time: timeString,
+      score: anomalyScore,
+      threshold: THRESHOLD
+    };
+
+    setChartData(prev => {
+      const newData = [...prev, newDataPoint];
+      if (newData.length > MAX_DATA_POINTS) newData.shift();
+      return newData;
+    });
+
+    setStats(prev => ({ ...prev, totalProcessed: prev.totalProcessed + 1 }));
+
+    // Generate an alert if the score breaches the threshold
+    if (anomalyScore >= THRESHOLD) {
+      const srcIp = MOCK_IPS[Math.floor(Math.random() * MOCK_IPS.length)];
+      const dstIp = "192.168.1.10 (Serveur Web)";
+      
+      const newAlert = {
+        id: Math.random().toString(36).substr(2, 9),
+        timestamp: timeString,
+        src_ip: srcIp,
+        dst_ip: dstIp,
+        score: anomalyScore.toFixed(3),
+        type: anomalyScore > 0.9 ? "CRITICAL" : "WARNING"
+      };
+
+      setAlerts(prev => {
+        const updatedAlerts = [newAlert, ...prev].slice(0, 50); // Keep last 50
+        return updatedAlerts;
+      });
+
+      setStats(prev => ({
+        ...prev,
+        totalAlerts: prev.totalAlerts + 1,
+        topAttacker: srcIp // Simplification for the mock
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    // Fill initial data
+    const initialData = [];
+    for(let i=0; i<MAX_DATA_POINTS; i++) {
+        initialData.push({ time: '', score: Math.random() * 0.2, threshold: THRESHOLD });
+    }
+    setChartData(initialData);
+
+    const interval = setInterval(() => {
+      if (isConnected) {
+        generateMockData();
+      }
+    }, 1000); // 1 tick per second
+
+    return () => clearInterval(interval);
+  }, [isConnected, generateMockData]);
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-6">
+      {/* Header */}
+      <header className="flex justify-between items-center mb-8 pb-4 border-b border-slate-800">
+        <div className="flex items-center gap-3">
+          <ShieldAlert className="w-8 h-8 text-cyan-500" />
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-wider">AEGIS <span className="text-cyan-500">Mini-SOC</span></h1>
+            <p className="text-xs text-slate-400">AI-Powered Network Intrusion Detection</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setIsConnected(!isConnected)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-colors ${isConnected ? 'bg-slate-800 text-green-400 hover:bg-slate-700' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}
+          >
+            {isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+            {isConnected ? 'MOTEUR EN LIGNE' : 'MOTEUR HORS LIGNE'}
+          </button>
+        </div>
+      </header>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 shadow-lg flex items-center gap-4">
+          <div className="p-3 bg-cyan-500/10 rounded-full">
+            <Activity className="w-6 h-6 text-cyan-500" />
+          </div>
+          <div>
+            <p className="text-sm text-slate-400">Paquets Analysés (Session)</p>
+            <p className="text-2xl font-bold text-white">{stats.totalProcessed}</p>
+          </div>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 shadow-lg flex items-center gap-4">
+          <div className="p-3 bg-red-500/10 rounded-full">
+            <AlertTriangle className="w-6 h-6 text-red-500" />
+          </div>
+          <div>
+            <p className="text-sm text-slate-400">Alertes Détectées</p>
+            <p className="text-2xl font-bold text-white">{stats.totalAlerts}</p>
+          </div>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 shadow-lg flex items-center gap-4">
+          <div className="p-3 bg-orange-500/10 rounded-full">
+            <Server className="w-6 h-6 text-orange-500" />
+          </div>
+          <div>
+            <p className="text-sm text-slate-400">Top IP Menace</p>
+            <p className="text-xl font-bold text-white font-mono">{stats.topAttacker}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Chart Area */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-lg p-5 shadow-lg">
+          <h2 className="text-lg font-semibold mb-4 text-white flex items-center gap-2">
+            <Activity className="w-5 h-5 text-cyan-500"/> Flux de Trafic & Score d'Anomalie
+          </h2>
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="time" stroke="#475569" tick={{fill: '#475569', fontSize: 12}} />
+                <YAxis domain={[0, 1]} stroke="#475569" tick={{fill: '#475569', fontSize: 12}} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', color: '#f8fafc' }}
+                  itemStyle={{ color: '#06b6d4' }}
+                />
+                <ReferenceLine y={THRESHOLD} label={{ position: 'top', value: 'Seuil Critique', fill: '#ef4444', fontSize: 12 }} stroke="#ef4444" strokeDasharray="3 3" />
+                <Line 
+                  type="monotone" 
+                  dataKey="score" 
+                  stroke="#06b6d4" 
+                  strokeWidth={2} 
+                  dot={false}
+                  isAnimationActive={false} 
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Alert Feed */}
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 shadow-lg flex flex-col">
+          <h2 className="text-lg font-semibold mb-4 text-white flex items-center gap-2">
+            <Shield className="w-5 h-5 text-red-500"/> Journal des Alertes (Live)
+          </h2>
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            {alerts.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-slate-500 italic">
+                Aucune anomalie détectée pour le moment.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {alerts.map((alert, index) => (
+                  <div key={index} className={`p-3 rounded border-l-4 text-sm ${
+                    alert.type === 'CRITICAL' 
+                      ? 'bg-red-500/10 border-red-500 text-red-200' 
+                      : 'bg-orange-500/10 border-orange-500 text-orange-200'
+                  }`}>
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-bold opacity-80">{alert.type}</span>
+                      <span className="text-xs opacity-70">{alert.timestamp}</span>
+                    </div>
+                    <div className="font-mono text-xs opacity-90 mt-1">
+                      <div><span className="opacity-60">SRC:</span> {alert.src_ip}</div>
+                      <div><span className="opacity-60">DST:</span> {alert.dst_ip}</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="opacity-60">SCORE ML:</span> 
+                        <span className="font-bold px-1.5 py-0.5 rounded bg-slate-950/50">{alert.score}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
