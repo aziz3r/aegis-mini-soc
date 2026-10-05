@@ -126,13 +126,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0        # gitleaks doit voir tout l'historique
 
+      # L'action officielle scanne la plage de commits de l'événement push, ce
+      # qui échoue dès que la référence précédente n'existe plus (historique
+      # réécrit, dépôt recréé). Le binaire appelé directement scanne l'arbre de
+      # travail : même couverture utile, aucune dépendance à l'historique.
       - name: Secrets commis par erreur (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: 8.24.3
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar xz -C /tmp gitleaks
+          /tmp/gitleaks dir . --no-banner --redact --exit-code 1 --verbose
 
       - uses: actions/setup-python@v5
         with:

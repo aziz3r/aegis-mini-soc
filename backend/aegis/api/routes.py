@@ -417,15 +417,24 @@ async def pipeline_status(request: Request, user: CurrentUser) -> dict:
 @router.post("/pipeline/start", tags=["pipeline"])
 async def pipeline_start(request: Request, user: AdminUser,
                          body: StartLab | StartPcap | StartLive) -> dict:
+    # La validation de la requête passe avant tout accès au moteur : une requête
+    # malformée doit être rejetée de la même façon qu'un modèle soit chargé ou
+    # non. Sans cela, un chemin de traversée de répertoire recevait un 503
+    # « aucun modèle » au lieu du 404 qu'il mérite — la faute était masquée par
+    # l'état d'exécution.
+    pcap: Path | None = None
+    if isinstance(body, StartPcap):
+        pcap = (settings.pcap_dir / Path(body.file).name).resolve()
+        if not pcap.is_relative_to(settings.pcap_dir.resolve()) or not pcap.exists():
+            raise HTTPException(status.HTTP_404_NOT_FOUND,
+                                f"fichier PCAP introuvable : {body.file}")
+
     pipeline = _pipeline(request)
     if isinstance(body, StartLab):
         await pipeline.start_lab(duration=body.duration, speed=body.speed, seed=body.seed,
                                 density=body.density, stealth_ratio=body.stealth_ratio)
-    elif isinstance(body, StartPcap):
-        path = (settings.pcap_dir / Path(body.file).name).resolve()
-        if not str(path).startswith(str(settings.pcap_dir.resolve())) or not path.exists():
-            raise HTTPException(status.HTTP_404_NOT_FOUND, f"fichier PCAP introuvable : {body.file}")
-        await pipeline.start_pcap(path, speed=body.speed)
+    elif pcap is not None:
+        await pipeline.start_pcap(pcap, speed=body.speed)
     else:
         await pipeline.start_live(body.iface, bpf=body.bpf)
     Writer.audit(user.username, "pipeline.start", body.source, body.model_dump())
