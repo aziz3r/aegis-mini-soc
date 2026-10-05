@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Chart roles. Defined once, referenced everywhere, so a palette change is a
+   one-file change. Values validated against the app's dark surface (#0b1220)
+   with the data-viz palette validator:
+     series-1 x series-2  -> all six checks pass (normal ΔE 31.8, CVD ΔE 26.8)
+   Only two series colours exist in the whole application, and they always mean
+   the same thing: blue is the ordinary measure, orange is the one that wants
+   attention. No chart ever carries more than these two.
+   The threshold line is an annotation, not a series: deliberately low-chroma,
+   dashed and directly labelled, so it recedes behind the data it qualifies. */
+:root {
+  --surface-0: #070b14;
+  --surface-1: #0b1220;
+  --surface-2: #101a2e;
+  --border-1: #1f3153;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --series-1: #3987e5;   /* the baseline measure: mean score, flow volume */
+  --series-2: #d95926;   /* the attention measure: peak score, alerts */
+  --annotation: #94a3b8; /* threshold reference */
+
+  /* Status palette: reserved, never reused as a series colour. Always shipped
+     with an icon and a text label - red, orange and yellow are hue neighbours
+     and cannot be told apart by colour alone. */
+  --sev-critical: #d03b3b;
+  --sev-high: #ec835a;
+  --sev-medium: #fab219;
+  --sev-low: #7c8da5;
+  --ok: #0ca30c;
+}
+
+html, body, #root { height: 100%; }
+body { background: var(--surface-0); }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #243755; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #30476b; }
+
+/* Recharts: keep the grid and axes recessive, never competing with the marks. */
+.recharts-cartesian-grid line { stroke: #16233c; }
+.recharts-cartesian-axis-line, .recharts-cartesian-axis-tick-line { stroke: #1f3153; }
+.recharts-text { fill: var(--text-muted); font-size: 11px; }
+.recharts-surface:focus { outline: none; }
+
+@layer components {
+  .panel { @apply bg-ink-900 border border-ink-700/70 rounded-xl; }
+  .panel-pad { @apply p-4 sm:p-5; }
+  .label-xs { @apply text-[11px] uppercase tracking-wider text-slate-500 font-medium; }
+  .btn { @apply inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium
+          transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+          focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
+          focus-visible:outline-accent; }
+  .btn-primary { @apply btn bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25; }
+  .btn-ghost { @apply btn text-slate-300 border border-ink-700 hover:bg-ink-800 hover:text-white; }
+  .btn-danger { @apply btn text-red-300 border border-red-500/30 bg-red-500/10 hover:bg-red-500/20; }
+  .input { @apply bg-ink-950 border border-ink-700 rounded-lg px-3 py-2 text-sm text-slate-200
+           placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-accent/40
+           focus:border-accent/40 w-full; }
+  .th { @apply text-left label-xs px-3 py-2 font-medium whitespace-nowrap; }
+  .td { @apply px-3 py-2 text-sm whitespace-nowrap; }
+  .link { @apply text-accent hover:underline underline-offset-2; }
+}
+
+/* Respect a reduced-motion preference: the live feed still updates, it just
+   stops animating. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
